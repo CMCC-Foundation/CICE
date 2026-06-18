@@ -1,3 +1,4 @@
 [submodule "icepack"]
 	path = icepack
-	url = https://github.com/ESCOMP/Icepack
+	url = https://github.com/CMCC-Foundation/Icepack
+        branch = cmcc-esm3
