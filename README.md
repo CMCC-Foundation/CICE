@@ -1,4 +1,7 @@
 <!--- [![Travis-CI](https://travis-ci.org/CICE-Consortium/CICE.svg?branch=main)](https://travis-ci.org/CICE-Consortium/CICE) --->
+
+CODE VERSION: `CICE6.0.0_cm3_v01`
+
 [![GHActions](https://github.com/CICE-Consortium/CICE/workflows/GHActions/badge.svg)](https://github.com/CICE-Consortium/CICE/actions)
 [![Documentation Status](https://readthedocs.org/projects/cice-consortium-cice/badge/?version=main)](http://cice-consortium-cice.readthedocs.io/en/main/?badge=main)
 [![lcov](https://img.shields.io/endpoint?url=https://apcraig.github.io/coverage.json)](https://apcraig.github.io)
