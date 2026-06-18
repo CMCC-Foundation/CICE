@@ -14,7 +14,7 @@
 
       use ice_kinds_mod
       use ice_communicate, only: my_task, master_task, ice_barrier
-      use ice_constants, only: c0, c1, c2, c3, p2, p5
+      use ice_constants, only: c0, c1, c2, c3, c4, p2, p3, p4, p5
       use ice_exit, only: abort_ice
       use ice_fileunits, only: nu_nml, nu_diag, nu_diag_set, nml_filename, diag_type, &
           ice_stdout, get_fileunit, release_fileunit, bfbflag, flush_fileunit, &
@@ -129,7 +129,7 @@
       logical :: exists
 
       real (kind=dbl_kind) :: ustar_min, albicev, albicei, albsnowv, albsnowi, &
-        ahmax, R_ice, R_pnd, R_snw, dT_mlt, rsnw_mlt, emissivity, &
+        ahmax, R_ice, R_pnd, R_snw, R_snw_sh, dT_mlt, rsnw_mlt, rsnw_mlt_sh, emissivity, &
         mu_rdg, hs0, dpscale, rfracmin, rfracmax, pndaspect, hs1, hp1, &
         a_rapid_mode, Rac_rapid_mode, aspect_rapid_mode, dSdt_slow_mode, &
         phi_c_slow_mode, phi_i_mushy, kalg, atmiter_conv, Pstar, Cstar, &
@@ -227,8 +227,9 @@
         shortwave,      albedo_type,                                    &
         albicev,        albicei,         albsnowv,      albsnowi,       &
         ahmax,          R_ice,           R_pnd,         R_snw,          &
+        R_snw_sh,                                                       &
         sw_redist,      sw_frac,         sw_dtemp,                      &
-        dT_mlt,         rsnw_mlt,        kalg
+        dT_mlt,         rsnw_mlt,        rsnw_mlt_sh,   kalg
 
       namelist /ponds_nml/ &
         hs0,            dpscale,         frzpnd,                        &
@@ -414,9 +415,11 @@
       R_ice     = 0.00_dbl_kind   ! tuning parameter for sea ice
       R_pnd     = 0.00_dbl_kind   ! tuning parameter for ponded sea ice
       R_snw     = 1.50_dbl_kind   ! tuning parameter for snow over sea ice
+      R_snw_sh  = -9999._dbl_kind ! R_snw for the Southern Hemisphere
       dT_mlt    = 1.5_dbl_kind    ! change in temp to give non-melt to melt change
                                   ! in snow grain radius
       rsnw_mlt  = 1500._dbl_kind  ! maximum melting snow grain radius
+      rsnw_mlt_sh = -9999._dbl_kind  ! rsnw_mlt for the Southern Hemisphere if specified from namelist
       kalg      = 0.60_dbl_kind   ! algae absorption coefficient for 0.5 m thick layer
                                   ! 0.5 m path of 75 mg Chl a / m2
       hp1       = 0.01_dbl_kind   ! critical pond lid thickness for topo ponds
@@ -869,8 +872,10 @@
       call broadcast_scalar(R_ice,                master_task)
       call broadcast_scalar(R_pnd,                master_task)
       call broadcast_scalar(R_snw,                master_task)
+      call broadcast_scalar(R_snw_sh,             master_task)
       call broadcast_scalar(dT_mlt,               master_task)
       call broadcast_scalar(rsnw_mlt,             master_task)
+      call broadcast_scalar(rsnw_mlt_sh,          master_task)
       call broadcast_scalar(kalg,                 master_task)
       call broadcast_scalar(hp1,                  master_task)
       call broadcast_scalar(hs0,                  master_task)
@@ -1000,6 +1005,14 @@
 #ifdef CESMCOUPLED
       pointer_file = trim(pointer_file) // trim(inst_suffix)
 #endif
+
+      ! Set both hemispheres to the same value if not specified
+      if (rsnw_mlt_sh<0._dbl_kind) then
+        rsnw_mlt_sh = rsnw_mlt
+      end if
+      if (R_snw_sh<0._dbl_kind) then
+        R_snw_sh = R_snw
+      end if
 
       !-----------------------------------------------------------------
       ! verify inputs
@@ -1720,8 +1733,10 @@
                write(nu_diag,1002) ' R_ice            = ', R_ice,' : tuning parameter for sea ice albedo'
                write(nu_diag,1002) ' R_pnd            = ', R_pnd,' : tuning parameter for ponded sea ice albedo'
                write(nu_diag,1002) ' R_snw            = ', R_snw,' : tuning parameter for snow broadband albedo'
+               write(nu_diag,1002) ' R_snw_sh         = ', R_snw_sh,' : R_snw for the Southern Hemisphere'
                write(nu_diag,1002) ' dT_mlt           = ', dT_mlt,' : change in temperature per change in snow grain radius'
                write(nu_diag,1002) ' rsnw_mlt         = ', rsnw_mlt,' : maximum melting snow grain radius'
+               write(nu_diag,1002) ' rsnw_mlt_sh      = ', rsnw_mlt_sh,' : rsnw_mlt for the Southern Hemisphere'
                write(nu_diag,1002) ' kalg             = ', kalg,' : absorption coefficient for algae'
             else
                if (trim(albedo_type) == 'ccsm3') then
@@ -2154,7 +2169,7 @@
          albsnowv_in=albsnowv, albsnowi_in=albsnowi, natmiter_in=natmiter, atmiter_conv_in=atmiter_conv, &
          emissivity_in=emissivity, &
          ahmax_in=ahmax, shortwave_in=shortwave, albedo_type_in=albedo_type, R_ice_in=R_ice, R_pnd_in=R_pnd, &
-         R_snw_in=R_snw, dT_mlt_in=dT_mlt, rsnw_mlt_in=rsnw_mlt, &
+         R_snw_in=R_snw, R_snw_sh_in=R_snw_sh, dT_mlt_in=dT_mlt, rsnw_mlt_in=rsnw_mlt, rsnw_mlt_sh_in=rsnw_mlt_sh, &
          kstrength_in=kstrength, krdg_partic_in=krdg_partic, krdg_redist_in=krdg_redist, mu_rdg_in=mu_rdg, &
          atmbndy_in=atmbndy, calc_strair_in=calc_strair, formdrag_in=formdrag, highfreq_in=highfreq, &
          kitd_in=kitd, kcatbound_in=kcatbound, hs0_in=hs0, dpscale_in=dpscale, frzpnd_in=frzpnd, &
@@ -2877,18 +2892,19 @@
       !-----------------------------------------------------------------
 
       ! initial category areas in cells with ice
-         hbar = c2  ! initial ice thickness with greatest area
+      !   hbar = c2  ! initial ice thickness with greatest area
+         hbar = c4+p5  ! initial ice thickness with greatest area
                     ! Note: the resulting average ice thickness 
                     ! tends to be less than hbar due to the
                     ! nonlinear distribution of ice thicknesses 
          sum = c0
          do n = 1, ncat
             if (n < ncat) then
-               hinit(n,1) = 0.3*(hin_max(n-1) + 0.78*hin_max(n)) ! m
-               hinit(n,2) = 0.2*(hin_max(n-1) + 0.5*hin_max(n)) ! m
+               hinit(n,1) = p5*(hin_max(n-1) + hin_max(n)) ! m
+               hinit(n,2) = p5*hinit(n,1)
             else                ! n=ncat
                hinit(n,1) = (hin_max(n-1) + c1) ! m
-               hinit(n,2) = (hin_max(n-1) + p5) ! m
+               hinit(n,2) = p5*hinit(n,1)
             endif
             ! parabola, max at h=hbar, zero at h=0, 2*hbar
             ainit(n,1) = max(c0, (c2*hbar*hinit(n,1) - hinit(n,1)**2))
@@ -2921,14 +2937,14 @@
          else
 
          imask(:,:) = .false.
-         ! NP
-         where (ULAT(:,:)<=edge_init_sh/rad_to_deg ) imask(:,:)=.true.
          ! SH
+         where (ULAT(:,:)<=edge_init_sh/rad_to_deg ) imask(:,:)=.true.
+         ! NP
          where (ULAT(:,:)>=74.0_dbl_kind/rad_to_deg ) imask(:,:)=.true.
          ! Hudson bay + Labrador
          where (ULAT(:,:)>=51.0_dbl_kind/rad_to_deg .and. &
                 ULON(:,:)>235.0_dbl_kind/rad_to_deg .and. &
-                ULON(:,:)<=303.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+                ULON(:,:)<=303.5_dbl_kind/rad_to_deg) imask(:,:)=.true.
          ! Labrador + Nordic sea
          where (ULAT(:,:)>=66.0_dbl_kind/rad_to_deg .and. &
                 ULON(:,:)>303.0_dbl_kind/rad_to_deg .and. &
@@ -2971,19 +2987,29 @@
 
          do n = 1, ncat
 
+            ! ice conc.
+            do ij = 1, icells
+               i = indxi(ij)
+               j = indxj(ij)
+               aicen(i,j,n) = ainit(n,1)*SQRT(ABS(SIN(TLAT(i,j))))
+            enddo               ! ij
+         enddo                  ! ncat
+
+         do n = 1, ncat
+
             ! ice volume, snow volume
             do ij = 1, icells
                i = indxi(ij)
                j = indxj(ij)
 
-               if (ULAT(i,j)>=0.0) then
-                 aicen(i,j,n) = ainit(n,1)
-                 vicen(i,j,n) = hinit(n,1) * ainit(n,1) ! m
-                 vsnon(i,j,n) =min(aicen(i,j,n)*1.5*hsno_init,0.5*vicen(i,j,n))
-               else if (ULAT(i,j)<0.0) then
-                 aicen(i,j,n) = ainit(n,2)
-                 vicen(i,j,n) = hinit(n,2) * ainit(n,2) ! m
-                 vsnon(i,j,n) =min(aicen(i,j,n)*p5*hsno_init,p2*vicen(i,j,n))
+               if (TLAT(i,j)>=0.0) then
+                 !vicen(i,j,n) = 1.3*hinit(n,1) * ainit(n,1) ! m
+                 vicen(i,j,n) = hinit(n,1) * aicen(i,j,n) ! m
+                 vsnon(i,j,n) =min(2.5*aicen(i,j,n)*hsno_init,p5*vicen(i,j,n))
+               else if (TLAT(i,j)<0.0) then
+                 !vicen(i,j,n) = hinit(n,2) * ainit(n,2) ! m
+                 vicen(i,j,n) = hinit(n,2) * aicen(i,j,n) ! m
+                 vsnon(i,j,n) =min(1.5*aicen(i,j,n)*hsno_init,p3*vicen(i,j,n))
                endif
 
                call icepack_init_trcr(Tair  = Tair(i,j), Tf = Tf(i,j),  &
