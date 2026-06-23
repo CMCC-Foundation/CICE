@@ -156,7 +156,7 @@
          rhofresh, lfresh, lvap, ice_ref_salinity, Tffresh
 
       character (len=char_len) :: &
-         snwredist, saltflux_option
+         snwredist
 
       ! hemispheric state quantities
       real (kind=dbl_kind) :: &
@@ -221,7 +221,7 @@
            awtvdr_out=awtvdr, awtidr_out=awtidr, awtvdf_out=awtvdf, awtidf_out=awtidf, &
            rhofresh_out=rhofresh, lfresh_out=lfresh, lvap_out=lvap, &
            ice_ref_salinity_out=ice_ref_salinity,snwredist_out=snwredist, &
-           snwgrain_out=snwgrain, saltflux_option_out=saltflux_option)
+           snwgrain_out=snwgrain)
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
@@ -706,22 +706,12 @@
          swerrs = (fswnets - fswdns) / (fswnets - c1)
 
          ! salt mass
-         if (saltflux_option == 'prognostic') then
-            ! compute the total salt mass
-            msltn = stotn*rhoi*p001
-            mslts = stots*rhoi*p001
+         msltn = micen*ice_ref_salinity*p001
+         mslts = mices*ice_ref_salinity*p001
 
-            ! change in salt mass
-            delmsltn = rhoi*(stotn-totsn)*p001
-            delmslts = rhoi*(stots-totss)*p001
-         else
-            msltn = micen*ice_ref_salinity*p001
-            mslts = mices*ice_ref_salinity*p001
-
-            ! change in salt mass
-            delmsltn = delmxn*ice_ref_salinity*p001
-            delmslts = delmxs*ice_ref_salinity*p001
-         endif
+         ! change in salt mass
+         delmsltn = delmxn*ice_ref_salinity*p001
+         delmslts = delmxs*ice_ref_salinity*p001
 
          ! salt error
          serrn = (sfsaltn + delmsltn) / (msltn + c1)

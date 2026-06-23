@@ -1796,7 +1796,6 @@
       integer (kind=int_kind) :: ktherm
       integer (kind=int_kind) :: nt_sice, nt_qice, nt_qsno, nt_iage, nt_FY, nt_Tsfc, &
                                  nt_alvl, nt_vlvl
-      character (len=char_len) :: saltflux_option
 
       type (block) :: &
          this_block           ! block information for current block
@@ -1808,7 +1807,6 @@
       call icepack_query_parameters(Tffresh_out=Tffresh, rhoi_out=rhoi, rhos_out=rhos, &
            rhow_out=rhow, ice_ref_salinity_out=ice_ref_salinity)
       call icepack_query_parameters(formdrag_out=formdrag, skl_bgc_out=skl_bgc, ktherm_out=ktherm)
-      call icepack_query_parameters(saltflux_option_out=saltflux_option)
       call icepack_query_tracer_flags(tr_pond_out=tr_pond, tr_aero_out=tr_aero, &
            tr_brine_out=tr_brine, tr_snow_out=tr_snow)
       call icepack_query_tracer_indices(nt_sice_out=nt_sice, nt_qice_out=nt_qice, &
@@ -2752,16 +2750,7 @@
                     dfresh = -rhoi*frazil(i,j,iblk)/dt 
                  endif
                  endif
-                 if (saltflux_option == 'prognostic') then
-                    sicen = c0
-                    do k = 1, nzilyr
-                       sicen = sicen + trcr(i,j,nt_sice+k-1,iblk)*vice(i,j,iblk) &
-                                     / real(nzilyr,kind=dbl_kind)
-                    enddo
-                    dfsalt = sicen*p001*dfresh
-                 else
-                    dfsalt = ice_ref_salinity*p001*dfresh
-                 endif
+                 dfsalt = ice_ref_salinity*p001*dfresh
                  worka(i,j) = aice(i,j,iblk)*(fsalt(i,j,iblk)+dfsalt)
               endif
            enddo
