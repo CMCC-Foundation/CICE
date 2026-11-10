@@ -20,6 +20,7 @@
       implicit none
       private
       public :: accum_hist_mechred, init_hist_mechred_2D, init_hist_mechred_3Dc
+      public :: n_ardg   ! used in ice_history.F90 to normalise sirdgthick
       
       !---------------------------------------------------------------
       ! flags: write to output file if true or histfreq value
@@ -83,7 +84,8 @@
       use ice_broadcast, only: broadcast_scalar
       use ice_calendar, only: nstreams, histfreq
       use ice_communicate, only: my_task, master_task
-      use ice_history_shared, only: tstr2D, tcstr, define_hist_field
+      use ice_history_shared, only: tstr2D, tcstr, define_hist_field, &
+          hist_stream_union, f_sirdgthick
 
       integer (kind=int_kind) :: ns
       integer (kind=int_kind) :: nml_error ! namelist i/o error flag
@@ -146,6 +148,9 @@
          f_vraftn = 'x'
       endif
       if (f_araftn /= 'x' .or. f_vraftn /= 'x') f_ardgn = f_araftn
+
+      ! sirdgthick (ice_history.F90) is normalised with the time sum of ardg
+      if (tr_lvl) call hist_stream_union(f_ardg, f_sirdgthick)
 
       call broadcast_scalar (f_ardg, master_task)
       call broadcast_scalar (f_vrdg, master_task)

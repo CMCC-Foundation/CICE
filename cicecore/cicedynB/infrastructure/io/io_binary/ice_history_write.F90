@@ -24,7 +24,7 @@
 
       implicit none
       private
-      public :: ice_write_hist
+      public :: ice_write_hist, ice_close_hist_files
       
 !=======================================================================
 
@@ -71,6 +71,10 @@
       logical (kind=log_kind) :: diag
 
       character(len=*), parameter :: subname = '(ice_write_hist)'
+
+      if (hist_mfilt(ns) > 1) call abort_ice(subname// &
+          'ERROR: hist_mfilt > 1 requires the PIO history writer (io_pio2), this is io_binary', &
+          file=__FILE__, line=__LINE__)
 
       diag = .false.
 
@@ -393,6 +397,15 @@
       endif
 
       end subroutine ice_write_hist
+
+!=======================================================================
+!
+! Several time samples per history file (hist_mfilt > 1) are implemented only
+! in the PIO history writer: nothing to close here.
+
+      subroutine ice_close_hist_files
+
+      end subroutine ice_close_hist_files
 
 !=======================================================================
 

@@ -29,7 +29,7 @@
 
       implicit none
       private
-      public :: ice_write_hist
+      public :: ice_write_hist, ice_close_hist_files
       
 !=======================================================================
 
@@ -119,6 +119,10 @@
       CHARACTER (char_len), dimension(ncoord) :: coord_bounds
 
       character(len=*), parameter :: subname = '(ice_write_hist)'
+
+      if (hist_mfilt(ns) > 1) call abort_ice(subname// &
+          'ERROR: hist_mfilt > 1 requires the PIO history writer (io_pio2), this is io_netcdf', &
+          file=__FILE__, line=__LINE__)
 
 #ifdef USE_NETCDF
       call icepack_query_parameters(secday_out=secday, rad_to_deg_out=rad_to_deg)
@@ -1412,6 +1416,15 @@
          'ERROR: defining _FillValue for '//trim(vname))
 
       end subroutine ice_write_hist_fill
+
+!=======================================================================
+!
+! Several time samples per history file (hist_mfilt > 1) are implemented only
+! in the PIO history writer: nothing to close here.
+
+      subroutine ice_close_hist_files
+
+      end subroutine ice_close_hist_files
 
 !=======================================================================
 

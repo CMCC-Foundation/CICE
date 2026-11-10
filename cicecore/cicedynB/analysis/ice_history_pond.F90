@@ -163,7 +163,7 @@
          call define_hist_field(n_hpond_ai,"hpond_ai","m",tstr2D, tcstr, & 
              "mean melt pond depth over grid cell",                &
              "weighted by ice area", c1, c0,                       &
-             ns, f_hpond)
+             ns, f_hpond_ai)
 
       if (f_ipond(1:1) /= 'x') &
          call define_hist_field(n_ipond,"ipond","m",tstr2D, tcstr, &

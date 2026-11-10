@@ -33,12 +33,17 @@
       implicit none
 
       private
-      public :: define_hist_field, accum_hist_field, icefields_nml, construct_filename
+      public :: define_hist_field, accum_hist_field, icefields_nml, construct_filename, &
+                hist_stream_union
       
       integer (kind=int_kind), public :: history_precision
 
       logical (kind=log_kind), public :: &
          hist_avg  ! if true, write averaged data instead of snapshots
+
+      integer (kind=int_kind), dimension(max_nstrm), public :: &
+         hist_mfilt ! number of time samples per history file, per stream
+                    ! (1 = one file per output time; > 1 only with PIO output)
 
       character (len=char_len_long), public :: &
          history_file  , & ! output file for history
@@ -71,7 +76,8 @@
       !---------------------------------------------------------------
 
       type, public :: ice_hist_field
-          character (len=16) :: vname     ! variable name
+          character (len=24) :: vname     ! variable name (24 as in CICE 6.6: room for the
+                                          ! '_<histfreq>' suffix of 16-character names)
           character (len=16) :: vunit     ! variable units
           character (len=25) :: vcoord    ! variable coordinates
           character (len=16) :: vcellmeas ! variable cell measures
@@ -277,22 +283,22 @@
            f_sidmassth = 'x', f_sidmassdyn = 'x', &
            f_sidmassgrowthwat = 'x', &
            f_sidmassgrowthbot = 'x', &
-           f_sidmasssi = 'x', &
+           f_sidmassgrowthsi = 'x', &
            f_sidmassevapsubl = 'x', &
-           f_sndmasssubl = 'x', &
+           f_sisndmasssubl = 'x', &
            f_sidmassmelttop = 'x', &
            f_sidmassmeltbot = 'x', &
-           f_sidmasslat = 'x', &
-           f_sndmasssnf = 'x', &
-           f_sndmassmelt = 'x', &
+           f_sidmassmeltlat = 'x', &
+           f_sisndmasssnf = 'x', &
+           f_sisndmassmelt = 'x', &
            f_siflswdtop = 'x', &
            f_siflswutop = 'x', &
            f_siflswdbot = 'x', &
            f_sifllwdtop = 'x', &
            f_sifllwutop = 'x', &
            f_siflsenstop = 'x', &
-           f_siflsensupbot = 'x', &
-           f_sifllatstop = 'x', &
+           f_siflsensbot = 'x', &
+           f_sifllattop = 'x', &
            f_siflcondtop = 'x', &
            f_siflcondbot = 'x', &
            f_sipr = 'x', &
@@ -309,6 +315,11 @@
            f_siitdconc = 'x', &
            f_siitdthick = 'x', &
            f_siitdsnthick = 'x', &
+           f_siitdsnconc = 'x', &
+           f_sisndmassdyn = 'x', &
+           f_sisndmasssi = 'x', &
+           f_sisali = 'x', &
+           f_sisaltmass = 'x', &
            f_sidragtop = 'x', &
            f_sirdgthick = 'x', &
            f_sistreave = 'x', &
@@ -421,22 +432,22 @@
            f_sidmassth, f_sidmassdyn,&
            f_sidmassgrowthwat, &
            f_sidmassgrowthbot, &
-           f_sidmasssi, &
+           f_sidmassgrowthsi, &
            f_sidmassevapsubl, &
-           f_sndmasssubl, &
+           f_sisndmasssubl, &
            f_sidmassmelttop, &
            f_sidmassmeltbot, &
-           f_sidmasslat, &
-           f_sndmasssnf, &
-           f_sndmassmelt, &
+           f_sidmassmeltlat, &
+           f_sisndmasssnf, &
+           f_sisndmassmelt, &
            f_siflswdtop, &
            f_siflswutop, &
            f_siflswdbot, &
            f_sifllwdtop, &
            f_sifllwutop, &
            f_siflsenstop, &
-           f_siflsensupbot, &
-           f_sifllatstop, &
+           f_siflsensbot, &
+           f_sifllattop, &
            f_siflcondtop, &
            f_siflcondbot, &
            f_sipr, &
@@ -453,6 +464,11 @@
            f_siitdconc, &
            f_siitdthick, &
            f_siitdsnthick, &
+           f_siitdsnconc, &
+           f_sisndmassdyn, &
+           f_sisndmasssi, &
+           f_sisali, &
+           f_sisaltmass, &
            f_sidragtop, &
            f_sirdgthick, &
            f_sistreave, &
@@ -581,22 +597,22 @@
            n_sidmassth  , n_sidmassdyn,  &
            n_sidmassgrowthwat,  &
            n_sidmassgrowthbot,  &
-           n_sidmasssi,  &
+           n_sidmassgrowthsi,  &
            n_sidmassevapsubl,  &
-           n_sndmasssubl,  &
+           n_sisndmasssubl,  &
            n_sidmassmelttop,  &
            n_sidmassmeltbot,  &
-           n_sidmasslat,  &
-           n_sndmasssnf,  &
-           n_sndmassmelt,  &
+           n_sidmassmeltlat,  &
+           n_sisndmasssnf,  &
+           n_sisndmassmelt,  &
            n_siflswdtop,  &
            n_siflswutop,  &
            n_siflswdbot,  &
            n_sifllwdtop,  &
            n_sifllwutop,  &
            n_siflsenstop,  &
-           n_siflsensupbot,  &
-           n_sifllatstop,  &
+           n_siflsensbot,  &
+           n_sifllattop,  &
            n_siflcondtop,  &
            n_siflcondbot,  &
            n_sipr,  &
@@ -613,6 +629,11 @@
            n_siitdconc, &
            n_siitdthick, &
            n_siitdsnthick, &
+           n_siitdsnconc, &
+           n_sisndmassdyn, &
+           n_sisndmasssi, &
+           n_sisali, &
+           n_sisaltmass, &
            n_sidragtop, &
            n_sirdgthick, &
            n_sistreave, &
@@ -648,6 +669,32 @@
 !=======================================================================
 
       contains
+
+!=======================================================================
+
+! Add to the frequency string fdst every output frequency of fsrc that is
+! not already in fdst, in the first unused ('x') positions. Used for fields
+! that need another field on the same streams for their normalisation.
+
+      subroutine hist_stream_union (fdst, fsrc)
+
+      character (len=*), intent(inout) :: fdst
+      character (len=*), intent(in)    :: fsrc
+
+      integer (kind=int_kind) :: k, kx
+
+      ! unused positions are 'x' or blank (strings shorter than max_nstrm)
+      do k = 1, len(fsrc)
+         if (fsrc(k:k) == 'x' .or. fsrc(k:k) == ' ') cycle
+         if (index(fdst, fsrc(k:k)) == 0) then
+            kx = scan(fdst, 'x ')
+            if (kx == 0) call abort_ice('hist_stream_union: no free position in '//trim(fdst), &
+                                        file=__FILE__, line=__LINE__)
+            fdst(kx:kx) = fsrc(k:k)
+         endif
+      enddo
+
+      end subroutine hist_stream_union
 
 !=======================================================================
 

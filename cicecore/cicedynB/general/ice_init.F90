@@ -78,7 +78,7 @@
       use ice_restart_shared, only: &
           restart, restart_ext, restart_coszen, restart_dir, restart_file, pointer_file, &
           runid, runtype, use_restart_time, restart_format, lcdf64
-      use ice_history_shared, only: hist_avg, history_dir, history_file, &
+      use ice_history_shared, only: hist_avg, hist_mfilt, history_dir, history_file, &
                              incond_dir, incond_file, version_name, &
                              history_precision, history_format
       use ice_flux, only: update_ocn_f, l_mpond_fresh
@@ -173,6 +173,7 @@
         diagfreq,       diag_type,      diag_file,       history_format,&
         print_global,   print_points,   latpnt,          lonpnt,        &
         debug_forcing,  histfreq,       histfreq_n,      hist_avg,      &
+        hist_mfilt,                                                     &
         history_dir,    history_file,   history_precision, cpl_bgc,     &
         histfreq_base,  dumpfreq_base,                                  &
         conserv_check,  debug_model,    debug_model_step,               &
@@ -304,6 +305,7 @@
       histfreq_n(:) = 1      ! output frequency 
       histfreq_base = 'zero' ! output frequency reference date
       hist_avg = .true.      ! if true, write time-averages (not snapshots)
+      hist_mfilt(:) = 1      ! time samples per history file (1 = one file per output time)
       history_format = 'default' ! history file format
       history_dir  = './'    ! write to executable dir for default
       history_file = 'iceh'  ! history file name prefix
@@ -775,6 +777,11 @@
       call broadcast_array(histfreq_n,            master_task)
       call broadcast_scalar(histfreq_base,        master_task)
       call broadcast_scalar(hist_avg,             master_task)
+      call broadcast_array(hist_mfilt,            master_task)
+      if (any(hist_mfilt(:) < 1)) then
+         call abort_ice(subname//'ERROR: hist_mfilt must be >= 1', &
+            file=__FILE__, line=__LINE__)
+      endif
       call broadcast_scalar(history_dir,          master_task)
       call broadcast_scalar(history_file,         master_task)
       call broadcast_scalar(history_precision,    master_task)
@@ -2031,6 +2038,7 @@
          write(nu_diag,1023) ' histfreq_n       = ', histfreq_n(:)
          write(nu_diag,1031) ' histfreq_base    = ', trim(histfreq_base)
          write(nu_diag,1011) ' hist_avg         = ', hist_avg
+         write(nu_diag,1023) ' hist_mfilt       = ', hist_mfilt(:)
          if (.not. hist_avg) write(nu_diag,1039) ' History data will be snapshots'
          write(nu_diag,1031) ' history_dir      = ', trim(history_dir)
          write(nu_diag,1031) ' history_file     = ', trim(history_file)
