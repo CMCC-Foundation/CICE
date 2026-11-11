@@ -1327,6 +1327,8 @@ contains
     ! Finalize routine
     !--------------------------------
 
+    use ice_history_write, only: ice_close_hist_files
+
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
 
@@ -1342,6 +1344,10 @@ contains
        write(nu_diag,'(a)') 'CICE: end of main integration loop'
        write(nu_diag,F91)
     end if
+
+    ! close the history files still open (hist_mfilt > 1)
+    call ice_close_hist_files()
+
     if (dbug > 5) call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine ModelFinalize

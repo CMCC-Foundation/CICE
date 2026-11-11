@@ -707,7 +707,7 @@
 !
 ! authors: Elizabeth Hunke, LANL
 
-      subroutine update_state (dt, daidt, dvidt, dagedt, offset)
+      subroutine update_state (dt, daidt, dvidt, dagedt, offset, dvsdt)
 
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
@@ -728,6 +728,9 @@
 
       real (kind=dbl_kind), intent(in), optional :: &
          offset   ! d(age)/dt time offset = dt for thermo, 0 for dyn
+
+      real (kind=dbl_kind), dimension(:,:,:), intent(inout), optional :: &
+         dvsdt    ! change in snow volume per time step
 
       integer (kind=int_kind) :: & 
          iblk,  & ! block index 
@@ -791,6 +794,8 @@
 
          daidt(i,j,iblk) = (aice(i,j,iblk) - daidt(i,j,iblk)) / dt
          dvidt(i,j,iblk) = (vice(i,j,iblk) - dvidt(i,j,iblk)) / dt
+         if (present(dvsdt)) &
+            dvsdt(i,j,iblk) = (vsno(i,j,iblk) - dvsdt(i,j,iblk)) / dt
          if (tr_iage) then
             if (offset > c0) then                 ! thermo
                if (trcr(i,j,nt_iage,iblk) > c0) &

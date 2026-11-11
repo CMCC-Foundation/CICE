@@ -75,6 +75,7 @@
          strinty , & ! divergence of internal ice stress, y (N/m^2)
          daidtd  , & ! ice area tendency due to transport   (1/s)
          dvidtd  , & ! ice volume tendency due to transport (m/s)
+         dvsdtd  , & ! snow volume tendency due to transport (m/s)
          dagedtd , & ! ice age tendency due to transport (s/s)
          dardg1dt, & ! rate of area loss by ridging ice (1/s)
          dardg2dt, & ! rate of area gain by new ridges (1/s)
@@ -377,6 +378,7 @@
          strinty    (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y (N/m^2)
          daidtd     (nx_block,ny_block,max_blocks), & ! ice area tendency due to transport   (1/s)
          dvidtd     (nx_block,ny_block,max_blocks), & ! ice volume tendency due to transport (m/s)
+         dvsdtd     (nx_block,ny_block,max_blocks), & ! snow volume tendency due to transport (m/s)
          dagedtd    (nx_block,ny_block,max_blocks), & ! ice age tendency due to transport (s/s)
          dardg1dt   (nx_block,ny_block,max_blocks), & ! rate of area loss by ridging ice (1/s)
          dardg2dt   (nx_block,ny_block,max_blocks), & ! rate of area gain by new ridges (1/s)
@@ -776,6 +778,11 @@
       fswabs  (:,:,:) = c0
       flwout  (:,:,:) = c0
       evap    (:,:,:) = c0
+      ! evaps and evapi are accumulated over the categories in Icepack (merge_fluxes)
+      ! at every time step: reset them here as evap (CMIP7 fix, as in CICE 6.6),
+      ! otherwise sidmassevapsubl and sisndmasssubl grow with the time since the start
+      evaps   (:,:,:) = c0
+      evapi   (:,:,:) = c0
       Tref    (:,:,:) = c0
       Qref    (:,:,:) = c0
       Uref    (:,:,:) = c0
@@ -942,7 +949,7 @@
 
       subroutine init_history_dyn
 
-      use ice_state, only: aice, vice, trcr, strength
+      use ice_state, only: aice, vice, vsno, trcr, strength
 
       logical (kind=log_kind) :: &
           tr_iage
@@ -977,6 +984,7 @@
       opening (:,:,:) = c0
       daidtd  (:,:,:) = aice(:,:,:) ! temporary initial area
       dvidtd  (:,:,:) = vice(:,:,:) ! temporary initial volume
+      dvsdtd  (:,:,:) = vsno(:,:,:) ! temporary initial snow volume
       if (tr_iage) &
          dagedtd (:,:,:) = trcr(:,:,nt_iage,:) ! temporary initial age
       fm      (:,:,:) = c0

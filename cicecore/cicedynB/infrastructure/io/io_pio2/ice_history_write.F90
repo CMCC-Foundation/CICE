@@ -23,10 +23,33 @@
       use ice_exit, only: abort_ice
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
       use icepack_intfc, only: icepack_query_parameters
+      use ice_domain_size, only: max_nstrm
+      use pio, only: file_desc_t, io_desc_t
 
       implicit none
       private
-      public :: ice_write_hist
+      public :: ice_write_hist, ice_close_hist_files
+
+      ! History files kept open between time samples (hist_mfilt > 1): the file and the
+      ! PIO decompositions of each stream are saved here until the file holds hist_mfilt
+      ! samples or the run ends (ice_close_hist_files). PIO buffers the writes in between.
+
+      integer (kind=int_kind), parameter :: niodesc = 10   ! decompositions per file
+
+      logical (kind=log_kind), dimension(max_nstrm), save :: &
+         hfile_open = .false.        ! a history file of this stream is open
+
+      integer (kind=int_kind), dimension(max_nstrm), save :: &
+         hfile_nrec = 0              ! time samples written in the open file
+
+      character (len=char_len_long), dimension(max_nstrm), save :: &
+         hfile_name                  ! name of the open file
+
+      type(file_desc_t), dimension(max_nstrm), save :: &
+         hfile_File                  ! open file
+
+      type(io_desc_t), dimension(niodesc,max_nstrm), save :: &
+         hfile_iodesc                ! decompositions of the open file
       
 !=======================================================================
 
@@ -140,6 +163,13 @@
 
       integer (kind=int_kind) :: lprecision
 
+      logical (kind=log_kind) :: &
+         keep_open, & ! this stream writes several time samples per file
+         new_file     ! a new file is created for this time sample
+
+      integer (kind=int_kind) :: &
+         nrec         ! time record written in the file
+
       character(len=*), parameter :: subname = '(ice_write_hist)'
 
       call icepack_query_parameters(secday_out=secday)
@@ -147,6 +177,13 @@
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
           file=__FILE__, line=__LINE__)
+
+      ! several time samples per file only for history streams, not for initial conditions
+      keep_open = (hist_mfilt(ns) > 1 .and. .not. write_ic)
+      new_file = .true.
+      if (keep_open) new_file = .not. hfile_open(ns)
+
+      if (new_file) then
 
       if (my_task == master_task) then
         call construct_filename(ncfile(ns),'nc',ns)
@@ -180,11 +217,37 @@
       call ice_pio_initdecomp(ndim3=nzslyr,    ndim4=ncat_hist, iodesc=iodesc4ds, precision=history_precision)
       call ice_pio_initdecomp(ndim3=nfsd_hist, ndim4=ncat_hist, iodesc=iodesc4df, precision=history_precision)
 
+      nrec = 1
+
+      else   ! file of this stream already open: add a time record
+
+      filename  = hfile_name(ns)
+      File      = hfile_File(ns)
+      iodesc2d  = hfile_iodesc( 1,ns)
+      iodesc3dc = hfile_iodesc( 2,ns)
+      iodesc3di = hfile_iodesc( 3,ns)
+      iodesc3db = hfile_iodesc( 4,ns)
+      iodesc3da = hfile_iodesc( 5,ns)
+      iodesc3df = hfile_iodesc( 6,ns)
+      iodesc3dv = hfile_iodesc( 7,ns)
+      iodesc4di = hfile_iodesc( 8,ns)
+      iodesc4ds = hfile_iodesc( 9,ns)
+      iodesc4df = hfile_iodesc(10,ns)
+      nrec = hfile_nrec(ns) + 1
+
+      endif  ! new_file
+
       ltime2 = timesecs/secday
 
       ! option of turning on double precision history files
       lprecision = pio_real
       if (history_precision == 8) lprecision = pio_double
+
+      !-----------------------------------------------------------------
+      ! define the file (dimensions, variables, attributes): new file only
+      !-----------------------------------------------------------------
+
+      if (new_file) then
 
       !-----------------------------------------------------------------
       ! define dimensions
@@ -825,12 +888,14 @@
 
         status = pio_enddef(File)
 
+      endif  ! new_file
+
       !-----------------------------------------------------------------
       ! write time variable
       !-----------------------------------------------------------------
 
         status = pio_inq_varid(File,'time',varid)
-        status = pio_put_var(File,varid,(/1/),ltime2)
+        status = pio_put_var(File,varid,(/nrec/),ltime2)
 
       !-----------------------------------------------------------------
       ! write time_bounds info
@@ -839,18 +904,24 @@
         if (hist_avg) then
           status = pio_inq_varid(File,'time_bounds',varid)
           time_bounds=(/time_beg(ns),time_end(ns)/)
-          bnd_start  = (/1,1/)
+          bnd_start  = (/1,nrec/)
           bnd_length = (/2,1/)
           status = pio_put_var(File,varid,ival=time_bounds, &
                    start=bnd_start(:),count=bnd_length(:)) 
         endif
 
+        allocate(workd2(nx_block,ny_block,nblocks))
+        allocate(workr2(nx_block,ny_block,nblocks))
+
+      !-----------------------------------------------------------------
+      ! time-invariant fields: new file only
+      !-----------------------------------------------------------------
+
+      if (new_file) then
+
       !-----------------------------------------------------------------
       ! write coordinate variables
       !-----------------------------------------------------------------
-
-        allocate(workd2(nx_block,ny_block,nblocks))
-        allocate(workr2(nx_block,ny_block,nblocks))
 
         do i = 1,ncoord
           status = pio_inq_varid(File, coord_var(i)%short_name, varid)
@@ -994,6 +1065,8 @@
       deallocate(workr3v)
       endif  ! f_bounds
 
+      endif  ! new_file
+
 
       !-----------------------------------------------------------------
       ! write variable data
@@ -1007,9 +1080,9 @@
                'ERROR getting varid for '//avail_hist_fields(n)%vname)
             workd2(:,:,:) = a2D(:,:,n,1:nblocks)
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc2d,&
@@ -1040,9 +1113,9 @@
             enddo
             enddo
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc3dc,&
@@ -1072,9 +1145,9 @@
             enddo
             enddo
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc3di,&
@@ -1104,9 +1177,9 @@
             enddo
             enddo
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc3db,&
@@ -1136,9 +1209,9 @@
             enddo
             enddo
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc3da,&
@@ -1168,9 +1241,9 @@
             enddo
             enddo
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc3df,&
@@ -1202,9 +1275,9 @@
             enddo ! i
             enddo ! j
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc4di,&
@@ -1236,9 +1309,9 @@
             enddo ! i
             enddo ! j
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc4ds,&
@@ -1270,9 +1343,9 @@
             enddo ! i
             enddo ! j
 #ifdef CESM1_PIO
-            call pio_setframe(varid, int(1,kind=PIO_OFFSET))
+            call pio_setframe(varid, int(nrec,kind=PIO_OFFSET))
 #else
-            call pio_setframe(File, varid, int(1,kind=PIO_OFFSET_KIND))
+            call pio_setframe(File, varid, int(nrec,kind=PIO_OFFSET_KIND))
 #endif
             if (history_precision == 8) then
                call pio_write_darray(File, varid, iodesc4df,&
@@ -1291,9 +1364,36 @@
 
 
       !-----------------------------------------------------------------
-      ! clean-up PIO descriptors
+      ! keep the file open until it holds hist_mfilt time samples
       !-----------------------------------------------------------------
 
+      if (keep_open .and. nrec < hist_mfilt(ns)) then
+         hfile_open(ns)  = .true.
+         hfile_nrec(ns)  = nrec
+         hfile_name(ns)  = filename
+         hfile_File(ns)  = File
+         hfile_iodesc( 1,ns) = iodesc2d
+         hfile_iodesc( 2,ns) = iodesc3dc
+         hfile_iodesc( 3,ns) = iodesc3di
+         hfile_iodesc( 4,ns) = iodesc3db
+         hfile_iodesc( 5,ns) = iodesc3da
+         hfile_iodesc( 6,ns) = iodesc3df
+         hfile_iodesc( 7,ns) = iodesc3dv
+         hfile_iodesc( 8,ns) = iodesc4di
+         hfile_iodesc( 9,ns) = iodesc4ds
+         hfile_iodesc(10,ns) = iodesc4df
+         if (my_task == master_task) then
+            write(nu_diag,*) ' '
+            write(nu_diag,'(a,i6,a,a)') ' Written time record ',nrec,' of ',trim(filename)
+         endif
+         return
+      endif
+
+      !-----------------------------------------------------------------
+      ! clean-up PIO descriptors (after writing out the buffered data)
+      !-----------------------------------------------------------------
+
+      call pio_syncfile(File)
       call pio_freedecomp(File,iodesc2d)
       call pio_freedecomp(File,iodesc3dv)
       call pio_freedecomp(File,iodesc3dc)
@@ -1310,12 +1410,48 @@
       !-----------------------------------------------------------------
 
       call pio_closefile(File)
+      if (keep_open) then
+         hfile_open(ns) = .false.
+         hfile_nrec(ns) = 0
+      endif
       if (my_task == master_task) then
          write(nu_diag,*) ' '
-         write(nu_diag,*) 'Finished writing ',trim(ncfile(ns))
+         write(nu_diag,'(a,a,a,i6,a)') ' Finished writing ',trim(filename), &
+                                      ' (',nrec,' time records)'
       endif
 
       end subroutine ice_write_hist
+
+!=======================================================================
+!
+! Close the history files that are still open (hist_mfilt > 1), e.g. at
+! the end of the run. A file closed here holds fewer than hist_mfilt samples.
+
+      subroutine ice_close_hist_files
+
+      use ice_communicate, only: my_task, master_task
+      use pio, only: pio_closefile, pio_freedecomp, pio_syncfile
+
+      integer (kind=int_kind) :: ns, k
+
+      do ns = 1, max_nstrm
+         if (hfile_open(ns)) then
+            call pio_syncfile(hfile_File(ns))
+            do k = 1, niodesc
+               call pio_freedecomp(hfile_File(ns), hfile_iodesc(k,ns))
+            enddo
+            call pio_closefile(hfile_File(ns))
+            if (my_task == master_task) then
+               write(nu_diag,*) ' '
+               write(nu_diag,'(a,a,a,i6,a)') ' Closed history file ',trim(hfile_name(ns)), &
+                                            ' (',hfile_nrec(ns),' time records)'
+            endif
+            hfile_open(ns) = .false.
+            hfile_nrec(ns) = 0
+         endif
+      enddo
+
+      end subroutine ice_close_hist_files
 
 !=======================================================================
 
