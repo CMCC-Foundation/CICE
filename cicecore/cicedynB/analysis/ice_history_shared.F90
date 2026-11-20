@@ -711,7 +711,8 @@
       integer (kind=int_kind), intent(in) :: ns
 
       integer (kind=int_kind) :: iyear, imonth, iday, isec
-      character (len=1) :: cstream
+      character (len=3) :: cstream
+      integer (kind=int_kind) :: lh
       character(len=*), parameter :: subname = '(construct_filename)'
 
         iyear = myear
@@ -742,10 +743,19 @@
               endif
            endif
 
+           ! add the history stream number to the file name (h0, h1, ...)
+           ! ns=1 -> h0, ns=2 -> h1, etc.
+           ! If history_file already ends in '.h' (e.g. 'iceh.cice.h'),
+           ! only the digit is appended: iceh.cice.h1.0001-01-30.nc
            cstream = ''
-!echmod ! this was implemented for CESM but it breaks post-processing software
-!echmod ! of other groups (including RASM which uses CESMCOUPLED)
-!echmod         if (ns > 1) write(cstream,'(i1.1)') ns-1
+           if (ns >= 1 .and. ns <= 10) then
+              lh = lenstr(history_file)
+              if (lh >= 2 .and. history_file(lh-1:lh) == '.h') then
+                 write(cstream,'(i1.1)') ns-1
+              else
+                 write(cstream,'(a,i1.1)') '.h', ns-1
+              endif
+           endif
 
            if (hist_avg) then    ! write averaged data
               if (histfreq(ns) == '1' .and. histfreq_n(ns) == 1)  then ! timestep
